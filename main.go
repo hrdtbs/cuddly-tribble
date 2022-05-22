@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"net/http"
 	"os"
 
 	"github.com/line/line-bot-sdk-go/linebot"
@@ -9,14 +10,35 @@ import (
 
 func main() {
 	bot, err := linebot.New(
-		os.Getenv("LINE_BOT_CHANNEL_SECRET"),
-		os.Getenv("LINE_BOT_CHANNEL_TOKEN"),
+		os.Getenv("LINE_CHANNEL_SECRET"),
+		os.Getenv("LINE_CHANNEL_TOKEN"),
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
-	message := linebot.NewTextMessage("hello, world")
-	if _, err := bot.BroadcastMessage(message).Do(); err != nil {
+
+	http.HandleFunc("/callback", func(w http.ResponseWriter, req *http.Request) {
+		events, err := bot.ParseRequest(req)
+		if err != nil {
+			if err == linebot.ErrInvalidSignature {
+				w.WriteHeader(400)
+			} else {
+				w.WriteHeader(500)
+			}
+			return
+		}
+		for _, event := range events {
+			if event.Type == linebot.EventTypeMessage {
+				switch message := event.Message.(type) {
+				case *linebot.TextMessage:
+					if _, err = bot.ReplyMessage(event.ReplyToken, linebot.NewTextMessage(message.Text)).Do(); err != nil {
+						log.Print(err)
+					}
+				}
+			}
+		}
+	})
+	if err := http.ListenAndServe(":"+os.Getenv("PORT"), nil); err != nil {
 		log.Fatal(err)
 	}
 }
